@@ -6,7 +6,7 @@ clear all; clc; close;
 import simscape.battery.parameters.*
 
 % --- Selection ---
-cellID = '1_9'; % Change to '1_9' here to switch cells
+cellID = '1_8'; % Change to '1_9' here to switch cells
 
 switch cellID
     case '1_8'
@@ -20,12 +20,12 @@ end
 filePrefix = sprintf('cell_%s_', cellID);
 data_path = 'sdi_processed/mat';
 
-% % User-provided OCV curve (SOC fraction vs OCV in volts)
-% ocvCurvePath = 'sdi_processed/rev1_ocv_curve.csv';
-% ocvCurve = readtable(ocvCurvePath);
-% ocvCurve = ocvCurve(:, {'SoC_fraction', 'OCV_V'});
-% ocvCurve = sortrows(ocvCurve, 'SoC_fraction');
-% ocvCurve.SoC_fraction = max(0, min(1, ocvCurve.SoC_fraction));
+% User-provided OCV curve (SOC fraction vs OCV in volts)
+ocvCurvePath = 'sdi_processed/rev1_ocv_curve.csv';
+ocvCurve = readtable(ocvCurvePath);
+ocvCurve = ocvCurve(:, {'SoC_fraction', 'OCV_V'});
+ocvCurve = sortrows(ocvCurve, 'SoC_fraction');
+ocvCurve.SoC_fraction = max(0, min(1, ocvCurve.SoC_fraction));
 
 % Build shared HPPC parser args, injecting initialSoC loaded per file.
 buildCommonArgs = @(initialSoC) {"TimeVariable", "time (s)", ...
@@ -83,30 +83,52 @@ disp(hppcSuite.SuiteSummary)
 
 %% Plot and visualize
 
-disp(hppcExp25degC.TestSummary)
+disp(hppcSuite.SuiteSummary)
 
-plot(hppcExp25degC)
-
-% plotPulse(hppcExp25degC)
+testsForPlot = [hppcExpMinus5degC, hppcExp10degC, hppcExp25degC, hppcExp45degC];
+plotTempsK = [268.15, 283.15, 298.15, 318.15];
+for k = 1:numel(testsForPlot)
+    figure('Name', sprintf('HPPC %.2f K', plotTempsK(k)));
+    plot(testsForPlot(k));
+end
 
 %% Modify breakpoints
 
 % 1. Define the 2-RC Model Structure
-
 NumRCPairs = 2;
 myEcm = ecm(NumRCPairs);
-choose_hppc = hppcExpMinus5degC; % Choose the HPPC test to fit
+
+% Choose the HPPC source to fit.
+% Valid values: "hppcExpMinus5degC", "hppcExp10degC", "hppcExp25degC", "hppcExp45degC", "hppcSuite"
+choose_hppc_name = "hppcExp25degC"; % Change this value to select which HPPC test to fit against
+
+switch choose_hppc_name
+    case "hppcExpMinus5degC"
+        choose_hppc = hppcExpMinus5degC;
+        fitTempsK = [268.15];
+    case "hppcExp10degC"
+        choose_hppc = hppcExp10degC;
+        fitTempsK = [283.15];
+    case "hppcExp25degC"
+        choose_hppc = hppcExp25degC;
+        fitTempsK = [298.15];
+    case "hppcExp45degC"
+        choose_hppc = hppcExp45degC;
+        fitTempsK = [318.15];
+    case "hppcSuite"
+        choose_hppc = hppcSuite;
+        fitTempsK = [268.15, 283.15, 298.15, 318.15];
+    otherwise
+        error('Unsupported choose_hppc_name: %s', choose_hppc_name);
+end
 
 myEcm.ModelParameterTables = ["ResistanceSOCBreakpoints", "ResistanceCurrentBreakpoints", "ResistanceTemperatureBreakpoints"];
 
 myEcm.SOCBreakpoints = simscape.Value([0, 0.05, 0.15, 0.25, 0.40, 0.50, 0.60, 0.70, 0.85, 1], "1");
 myEcm.ResistanceSOCBreakpoints = simscape.Value([0, 0.05, 0.15, 0.25, 0.40, 0.50, 0.60, 0.70, 0.85, 1], "1");
 myEcm.ResistanceCurrentBreakpoints = simscape.Value([24.75, 49.5, 74.25, 99], "A");
-
-myEcm.ResistanceTemperatureBreakpoints = simscape.Value([268.15, 283.15, 298.15, 318.15], "K");
-myEcm.TemperatureBreakpoints = simscape.Value([268.15, 283.15, 298.15, 318.15], "K");
-% myEcm.ResistanceTemperatureBreakpoints = simscape.Value([298.15], "K");
-% myEcm.TemperatureBreakpoints = simscape.Value([298.15], "K");
+myEcm.ResistanceTemperatureBreakpoints = simscape.Value(fitTempsK, "K");
+myEcm.TemperatureBreakpoints = simscape.Value(fitTempsK, "K");
 
 % 2. Fit the ECM to the chosen HPPC test
 batteryEcm = fitECM(choose_hppc, ...
@@ -117,6 +139,47 @@ batteryEcm = fitECM(choose_hppc, ...
 
 disp(batteryEcm.TestParameterTables)
 
-% batteryEcm.plotModelParameters();
+runIsolatedPlotCall(@() batteryEcm.plotModelParameters(), "ECM Model Parameters");
 
-simulateHPPCTest(batteryEcm, choose_hppc);
+if choose_hppc_name == "hppcSuite"
+    % simulateHPPCTest expects a single hppcTest; run once per temperature test.
+    testsForSim = [hppcExpMinus5degC, hppcExp10degC, hppcExp25degC, hppcExp45degC];
+    for k = 1:numel(testsForSim)
+        fprintf('Simulating suite member %d/%d at %.2f K\n', k, numel(testsForSim), fitTempsK(k));
+        figure('Name', sprintf('Simulation %.2f K', fitTempsK(k)), 'NumberTitle', 'off');
+        hold off;
+        simulateHPPCTest(batteryEcm, testsForSim(k));
+    end
+else
+    figure('Name', sprintf('Simulation %.2f K', fitTempsK(1)), 'NumberTitle', 'off');
+    hold off;
+    simulateHPPCTest(batteryEcm, choose_hppc);
+end
+
+
+%% Helper function 
+
+function newFigs = runIsolatedPlotCall(plotFcn, baseName)
+% Run a plotting call and tag figures created by this call only.
+    figsBefore = findall(groot, 'Type', 'figure');
+    plotFcn();
+    drawnow;
+    figsAfter = findall(groot, 'Type', 'figure');
+    newFigs = setdiff(figsAfter, figsBefore);
+
+    if isempty(newFigs)
+        return;
+    end
+
+    newFigs = flipud(newFigs(:));
+    for i = 1:numel(newFigs)
+        if strlength(baseName) > 0
+            if numel(newFigs) == 1
+                thisName = baseName;
+            else
+                thisName = sprintf('%s (%d)', baseName, i);
+            end
+            set(newFigs(i), 'Name', thisName, 'NumberTitle', 'off');
+        end
+    end
+end
