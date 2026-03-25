@@ -5,15 +5,18 @@ clear all; clc; close;
 
 import simscape.battery.parameters.*
 
-% cell_capacities = {
-%     '1-8': 52.11744,
-%     '1-9': 51.82056,
-% }
-
 % --- Selection ---
-cellID = '1_8'; % Change to '1_9' here to switch cells
+cellID = '1_9'; % Change to '1_9' here to switch cells
 
-Capacity = 52.11744; % mAh, adjust if needed based on cellID
+switch cellID
+    case '1_8'
+        Capacity = 52.11744; % mAh
+    case '1_9'
+        Capacity = 51.82056; % mAh
+    otherwise
+        error('Unsupported cellID: %s. Supported values are ''1_8'' and ''1_9''.', cellID);
+end
+
 filePrefix = sprintf('cell_%s_', cellID);
 data_path = 'sdi_processed/mat';
 
@@ -92,7 +95,7 @@ plot(hppcExp25degC)
 
 NumRCPairs = 2;
 myEcm = ecm(NumRCPairs);
-choose_hppc = hppcExp45degC; % Choose the HPPC test to fit
+choose_hppc = hppcExpMinus5degC; % Choose the HPPC test to fit
 
 myEcm.ModelParameterTables = ["ResistanceSOCBreakpoints", "ResistanceCurrentBreakpoints", "ResistanceTemperatureBreakpoints"];
 
@@ -106,7 +109,7 @@ myEcm.TemperatureBreakpoints = simscape.Value([268.15, 283.15, 298.15, 318.15], 
 % myEcm.TemperatureBreakpoints = simscape.Value([298.15], "K");
 
 % 2. Fit the ECM to the chosen HPPC test
-batteryEcm = fitECM(hppcExp25degC, ...
+batteryEcm = fitECM(choose_hppc, ...
                     ECM=myEcm, ...
                     SegmentToFit="relaxation", ...
                     FittingMethod="curvefit", ...
@@ -116,4 +119,4 @@ disp(batteryEcm.TestParameterTables)
 
 % batteryEcm.plotModelParameters();
 
-simulateHPPCTest(batteryEcm, hppcExp25degC);
+simulateHPPCTest(batteryEcm, choose_hppc);
