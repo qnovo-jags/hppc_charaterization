@@ -1,8 +1,5 @@
 clear all; clc; close all;
 
-% FIX: Use curly braces {} to create a Cell Array of strings
-temps = {'minus5', '10', '25', '45'}; 
-
 % --- Processing Configuration ---
 doResample = false; 
 resampleRate = 1;  
@@ -10,7 +7,6 @@ resampleRate = 1;
 % --- File Configuration ---
 filePrefix = 'cell_1_9_'; % Change this to 'cell_1_9_' as needed
 
-% fileNames = {'hppc_data_minus5C.csv', 'hppc_data_10C.csv', 'hppc_data_25C.csv', 'hppc_data_45C.csv'};
 temps = {'minus5', '10', '25', '45'}; 
 
 data_path = 'sdi_processed';
@@ -26,6 +22,25 @@ for i = 1:length(temps)
     
     if exist(filePath, 'file')
         rawTable = readtable(filePath);
+
+        % Extract initial SoC from any column containing "soc".
+        socColIdx = find(contains(lower(rawTable.Properties.VariableNames), 'soc'), 1);
+        initialSoC = NaN;
+        if ~isempty(socColIdx)
+            socValues = rawTable{:, socColIdx};
+            if iscell(socValues) || isstring(socValues)
+                socValues = str2double(string(socValues));
+            end
+            socValues = socValues(isfinite(socValues));
+            if ~isempty(socValues)
+                initialSoC = socValues(1);
+                % Normalize to fraction if SoC is provided in percent.
+                if initialSoC > 1
+                    initialSoC = initialSoC / 100;
+                end
+                initialSoC = max(0, min(1, initialSoC));
+            end
+        end
         
         if doResample
             % Normalize time and create timetable
@@ -53,8 +68,8 @@ for i = 1:length(temps)
         % --- Updated Save Logic with Prefix ---
         baseName = sprintf('%shppc_%sdegC_processed.mat', filePrefix, temps{i});
         saveName = fullfile(mat_path, baseName);
-        save(saveName, 'tempData');
+        save(saveName, 'tempData', 'initialSoC');
         
-        fprintf('Saved: %s\n', baseName);
+        fprintf('Saved: %s (initialSoC = %.6f)\n', baseName, initialSoC);
     end
 end
