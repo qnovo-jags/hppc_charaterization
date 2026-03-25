@@ -41,3 +41,4 @@ codegen/
 *.sbproj.backup
 *.sbproj.bak
 .DS_Store
+*.DS_Store
