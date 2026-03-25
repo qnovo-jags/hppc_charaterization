@@ -4,7 +4,7 @@ clear all; clc; close all;
 temps = {'minus5', '10', '25', '45'}; 
 
 % --- Processing Configuration ---
-doResample = true; 
+doResample = false; 
 resampleRate = 1;  
 
 % --- File Configuration ---
